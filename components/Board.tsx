@@ -46,7 +46,7 @@ export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, dis
   const pathD = coords ? `M ${coords.x1} ${coords.y1} L ${coords.x2} ${coords.y2}` : '';
 
   return (
-    <div className={`grid grid-cols-3 gap-3 p-3 bg-gray-800 rounded-xl relative transition-all duration-500 ${containerClass}`}>
+    <div className={`w-full aspect-square grid grid-cols-3 gap-2 md:gap-4 p-3 md:p-5 bg-gray-800 rounded-xl relative transition-all duration-500 ${containerClass}`}>
       {squares.map((square, i) => {
         const isWinningSquare = winningLine?.includes(i);
         return (
@@ -55,7 +55,9 @@ export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, dis
             onClick={() => onClick(i)}
             disabled={disabled || square !== null}
             className={`
-              w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center rounded-lg text-4xl sm:text-5xl transition-all duration-200 relative z-10
+              w-full h-full aspect-square
+              flex items-center justify-center rounded-lg 
+              transition-all duration-200 relative z-10
               ${square === null 
                 ? 'bg-gray-900 hover:bg-gray-700 cursor-pointer' 
                 : 'bg-gray-900 cursor-default'}
@@ -65,15 +67,13 @@ export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, dis
           >
             {square === 'X' && (
               <X 
-                size={60} 
-                className="text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]" 
+                className="w-[60%] h-[60%] text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]" 
                 strokeWidth={3}
               />
             )}
             {square === 'O' && (
               <Circle 
-                size={55} 
-                className="text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.8)]" 
+                className="w-[60%] h-[60%] text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.8)]" 
                 strokeWidth={3}
               />
             )}

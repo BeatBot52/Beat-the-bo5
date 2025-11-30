@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff } from 'lucide-react';
 import { Player, WinState, GameStage, GameSettings, LeaderboardEntry } from './types';
 import { TAUNTS, HINTS, BOT_BLUNDER_CHANCE, LEADERBOARD_COMMENTS, SCANNING_MESSAGES, AWAY_MESSAGES, GAME_DURATION } from './constants';
 import { checkWinner, getBotMove } from './services/ai';
+import { playPlayerMove, playBotMove, playWin, playLose, playDraw, playTicker } from './services/audio';
 import { Board } from './components/Board';
 import { TrashTalk } from './components/TrashTalk';
 import { ConfettiEffect } from './components/ConfettiEffect';
@@ -58,7 +60,6 @@ export default function App() {
 
   // --- PWA Install Handler ---
   useEffect(() => {
-    // Check if already installed
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsAppInstalled(true);
     }
@@ -85,9 +86,7 @@ export default function App() {
         }
       });
     } else {
-      // Manual Instructions via Bot Taunt
       setBotTaunt("MANUAL OVERRIDE: Tap the 3 dots ↗️ and select 'Install App' or 'Add to Home Screen'.");
-      // Also show a standard alert for clarity
       alert("To install for Offline Play:\n\n1. Tap the browser menu (⋮ or ↗️)\n2. Select 'Add to Home Screen' or 'Install App'");
     }
   };
@@ -99,21 +98,19 @@ export default function App() {
     const speak = (text: string) => {
       if (isMuted) return;
       
-      // Cancel previous speech to avoid queue buildup
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
       speechRef.current = utterance;
       
-      // Try to find a robotic/weird voice
       const voices = window.speechSynthesis.getVoices();
       const botVoice = voices.find(v => v.name.includes('Google US English')) || 
                        voices.find(v => v.name.includes('Samantha')) ||
                        voices[0];
       
       if (botVoice) utterance.voice = botVoice;
-      utterance.pitch = 0.8; // Lower pitch for "bot" feel
-      utterance.rate = 1.1;  // Slightly faster
+      utterance.pitch = 0.8;
+      utterance.rate = 1.1;
       
       window.speechSynthesis.speak(utterance);
     };
@@ -161,6 +158,10 @@ export default function App() {
             handleTimeout();
             return 0;
           }
+          // Panic Ticker Sound
+          if (prev <= 11 && !isMuted) { // prev is about to become prev-1
+             playTicker();
+          }
           return prev - 1;
         });
       }, 1000);
@@ -173,7 +174,7 @@ export default function App() {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [stage, winState, isScanning, isTimerRunning]);
+  }, [stage, winState, isScanning, isTimerRunning, isMuted]);
 
   const handleTimeout = () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
@@ -182,6 +183,7 @@ export default function App() {
     const result: WinState = { winner: 'O', line: null, reason: 'TIMEOUT' };
     setWinState(result);
     setBotTaunt(TAUNTS.TIMEOUT[Math.floor(Math.random() * TAUNTS.TIMEOUT.length)]);
+    if (!isMuted) playLose();
     handleGameEnd(result);
   };
 
@@ -189,14 +191,12 @@ export default function App() {
   useEffect(() => {
     if (stage !== GameStage.PLAYING || isXNext || winState || isScanning) return;
 
-    // Bot "thinking" delay
     const delay = Math.random() * 800 + 500;
     turnTimeoutRef.current = window.setTimeout(() => {
       const move = getBotMove(squares);
       if (move !== -1) {
         handleMove(move);
         const randomTaunt = TAUNTS.MOVE[Math.floor(Math.random() * TAUNTS.MOVE.length)];
-        // Only change taunt if we aren't losing due to timeout in the split second
         if (timeLeft > 0) setBotTaunt(randomTaunt);
         
         setIsShaking(true);
@@ -212,6 +212,12 @@ export default function App() {
   const handleMove = (i: number) => {
     if (squares[i] || winState || isScanning || timeLeft <= 0) return;
 
+    // Play Move Sound
+    if (!isMuted) {
+       if (isXNext) playPlayerMove();
+       else playBotMove();
+    }
+
     const nextSquares = squares.slice();
     nextSquares[i] = isXNext ? 'X' : 'O';
     setSquares(nextSquares);
@@ -219,13 +225,11 @@ export default function App() {
 
     const result = checkWinner(nextSquares);
     if (result) {
-      setIsTimerRunning(false); // Stop timer immediately on win
+      setIsTimerRunning(false);
       if (result.winner === 'X') {
-        // Trigger fake cheat scanning
         setIsScanning(true);
         setBotTaunt("WAIT. CALCULATING...");
         
-        // Cycle through fake scanning messages
         let scanSteps = 0;
         const scanInterval = setInterval(() => {
           setScanMessage(SCANNING_MESSAGES[Math.floor(Math.random() * SCANNING_MESSAGES.length)]);
@@ -234,13 +238,25 @@ export default function App() {
              clearInterval(scanInterval);
              setIsScanning(false);
              setWinState(result);
+             if (!isMuted) playWin();
              handleGameEnd(result);
           }
         }, 800);
       } else {
         setWinState(result);
+        if (result.reason !== 'TIMEOUT' && !isMuted) playLose();
         handleGameEnd(result);
       }
+    } else if (result === null && !nextSquares.includes(null)) {
+        // Draw implicit check (though checkWinner returns DRAW object usually)
+    } else {
+       // Check for draw explicitly if not caught above
+       if (!nextSquares.includes(null) && !result) {
+           const drawState: WinState = { winner: 'DRAW', line: null };
+           setWinState(drawState);
+           if (!isMuted) playDraw();
+           handleGameEnd(drawState);
+       }
     }
   };
 
@@ -276,7 +292,6 @@ export default function App() {
         botComment: LEADERBOARD_COMMENTS[Math.floor(Math.random() * LEADERBOARD_COMMENTS.length)]
       };
       
-      // Add new entry, sort by time taken (ascending), then by date
       const updatedLeaderboard = [...leaderboard, newEntry]
         .sort((a, b) => a.timeTaken - b.timeTaken)
         .slice(0, 50);
@@ -286,7 +301,6 @@ export default function App() {
 
     } else if (result.winner === 'O') {
       newScores.bot += 1;
-      // If it wasn't a timeout, show a generic win message
       if (result.reason !== 'TIMEOUT') {
         setBotTaunt(TAUNTS.WIN[Math.floor(Math.random() * TAUNTS.WIN.length)]);
       }
@@ -327,74 +341,90 @@ export default function App() {
 
   const isSessionOver = roundsPlayed >= settings.totalRounds && winState !== null;
 
+  // Calculate Panic Animation
+  const getTimerStyle = () => {
+    if (timeLeft > 10) return {};
+    
+    // Intensity grows as time gets closer to 0
+    // At 10s: intensity ~1. At 1s: intensity ~10.
+    const intensity = (11 - timeLeft) * 1.5;
+    const x = (Math.random() - 0.5) * intensity;
+    const y = (Math.random() - 0.5) * intensity;
+    const rot = (Math.random() - 0.5) * intensity;
+    
+    return {
+       transform: `translate(${x}px, ${y}px) rotate(${rot}deg)`,
+       color: timeLeft <= 5 ? '#ef4444' : '#f59e0b' // Red vs Orange
+    };
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[url('https://images.unsplash.com/photo-1535868463750-c78d9543614f?q=80&w=2076&auto=format&fit=crop')] bg-cover bg-center bg-no-repeat bg-blend-multiply bg-gray-900 overflow-hidden select-none">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-[url('https://images.unsplash.com/photo-1535868463750-c78d9543614f?q=80&w=2076&auto=format&fit=crop')] bg-cover bg-center bg-no-repeat bg-blend-multiply bg-gray-900 overflow-hidden select-none">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
       
       {/* Top Controls */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2">
-         {/* Install Button (Permanent) */}
+      <div className="absolute top-4 right-4 z-50 flex gap-2 md:gap-4 md:top-6 md:right-6">
          <button 
            onClick={handleInstallClick}
-           className="flex items-center gap-2 px-3 py-2 bg-gray-900/80 border border-cyan-500 text-cyan-500 rounded-full hover:bg-cyan-500/20 transition-all hover:scale-105 active:scale-95 shadow-lg group"
+           className="flex items-center gap-2 px-3 py-2 md:px-5 md:py-3 bg-gray-900/80 border border-cyan-500 text-cyan-500 rounded-full hover:bg-cyan-500/20 transition-all hover:scale-105 active:scale-95 shadow-lg group"
            title="Install App for Offline Play"
          >
-           <Download size={20} className="group-hover:animate-bounce" />
-           <span className="hidden sm:inline font-bold text-xs">INSTALL APP</span>
+           <Download className="w-5 h-5 md:w-6 md:h-6 group-hover:animate-bounce" />
+           <span className="hidden sm:inline font-bold text-xs md:text-sm">INSTALL APP</span>
          </button>
 
          <button 
            onClick={() => setIsMuted(!isMuted)}
-           className={`p-3 bg-gray-900/80 border rounded-full transition-all hover:scale-110 active:scale-95 shadow-lg group ${isMuted ? 'border-gray-600 text-gray-400' : 'border-pink-500 text-pink-500 hover:bg-pink-500/20'}`}
+           className={`p-3 md:p-4 bg-gray-900/80 border rounded-full transition-all hover:scale-110 active:scale-95 shadow-lg group ${isMuted ? 'border-gray-600 text-gray-400' : 'border-pink-500 text-pink-500 hover:bg-pink-500/20'}`}
            title={isMuted ? "Enable Bot Voice" : "Mute Bot Voice"}
          >
-           {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} className="animate-pulse" />}
+           {isMuted ? <VolumeX className="w-6 h-6 md:w-7 md:h-7" /> : <Volume2 className="w-6 h-6 md:w-7 md:h-7 animate-pulse" />}
          </button>
       </div>
       
-      {/* Top Left - Winners Board */}
-      <div className="absolute top-4 left-4 z-40">
+      <div className="absolute top-4 left-4 z-40 md:top-6 md:left-6">
          <button 
            onClick={() => setShowLeaderboard(true)}
-           className="px-4 py-3 bg-gray-900/90 border-2 border-yellow-500/60 rounded-lg hover:bg-yellow-500/10 text-yellow-500 transition-all hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(234,179,8,0.2)] flex items-center gap-2 group"
+           className="px-4 py-3 md:px-6 md:py-4 bg-gray-900/90 border-2 border-yellow-500/60 rounded-lg hover:bg-yellow-500/10 text-yellow-500 transition-all hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(234,179,8,0.2)] flex items-center gap-2 group"
            title="Check who got lucky"
          >
-           <Trophy size={20} className="group-hover:animate-bounce" />
-           <span className="font-bold font-mono tracking-wide hidden sm:inline text-sm">HALL OF MIRACLES</span>
+           <Trophy className="w-5 h-5 md:w-7 md:h-7 group-hover:animate-bounce" />
+           <span className="font-bold font-mono tracking-wide hidden sm:inline text-sm md:text-base">HALL OF MIRACLES</span>
          </button>
       </div>
 
       <ConfettiEffect active={winState?.winner === 'X' && !isScanning} />
 
-      <div className="relative z-10 w-full max-w-lg flex flex-col items-center">
+      {/* Main Game Container - Responsive Width for Tablets/Desktops */}
+      <div className="relative z-10 w-full max-w-md md:max-w-xl lg:max-w-2xl flex flex-col items-center transition-all duration-300">
         
         {/* Header */}
-        <div className="text-center mb-6">
-          <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600 neon-text-pink tracking-tighter italic transform -skew-x-6 drop-shadow-lg glitch-hover cursor-default">
+        <div className="text-center mb-6 md:mb-8">
+          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600 neon-text-pink tracking-tighter italic transform -skew-x-6 drop-shadow-lg glitch-hover cursor-default">
             BEAT THE BOT
           </h1>
-          <p className="text-cyan-400 font-mono mt-2 text-lg tracking-widest uppercase glow-cyan">
+          <p className="text-cyan-400 font-mono mt-2 text-lg md:text-2xl tracking-widest uppercase glow-cyan">
             Good luck, meatbag 😈
           </p>
           {isOffline && (
-             <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 bg-red-900/50 rounded-full border border-red-500 text-red-300 text-xs font-bold animate-pulse">
+             <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 bg-red-900/50 rounded-full border border-red-500 text-red-300 text-xs md:text-sm font-bold animate-pulse">
                <WifiOff size={12} /> OFFLINE MODE ACTIVE
              </div>
           )}
         </div>
 
         {stage === GameStage.LOGIN && (
-          <div className="bg-gray-800/90 p-8 rounded-2xl shadow-2xl border border-pink-500/30 backdrop-blur-md w-full animate-in fade-in zoom-in duration-300">
-            <div className="flex flex-col gap-6">
+          <div className="bg-gray-800/90 p-8 md:p-12 rounded-2xl shadow-2xl border border-pink-500/30 backdrop-blur-md w-full animate-in fade-in zoom-in duration-300">
+            <div className="flex flex-col gap-6 md:gap-8">
               <div>
-                <label className="block text-pink-500 font-bold mb-2 font-mono">IDENTIFY YOURSELF</label>
+                <label className="block text-pink-500 font-bold mb-2 font-mono md:text-lg">IDENTIFY YOURSELF</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-3 text-gray-400" size={20} />
+                  <User className="absolute left-3 top-3 md:left-4 md:top-4 text-gray-400" size={20} />
                   <input
                     type="text"
                     maxLength={12}
                     placeholder="ENTER NAME"
-                    className="w-full bg-gray-900 border-2 border-gray-700 text-white pl-10 pr-4 py-2 rounded focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50 font-mono transition-all uppercase"
+                    className="w-full bg-gray-900 border-2 border-gray-700 text-white pl-10 pr-4 py-2 md:py-3 md:pl-12 md:text-xl rounded focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50 font-mono transition-all uppercase"
                     value={settings.playerName}
                     onChange={(e) => setSettings({ ...settings, playerName: e.target.value.toUpperCase() })}
                   />
@@ -402,13 +432,13 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-cyan-400 font-bold mb-2 font-mono">SELECT ROUNDS</label>
+                <label className="block text-cyan-400 font-bold mb-2 font-mono md:text-lg">SELECT ROUNDS</label>
                 <div className="flex gap-4">
                   {[1, 2, 3].map(num => (
                     <button
                       key={num}
                       onClick={() => setSettings({ ...settings, totalRounds: num })}
-                      className={`flex-1 py-3 rounded border-2 font-bold transition-all duration-200 ${
+                      className={`flex-1 py-3 md:py-4 rounded border-2 font-bold md:text-xl transition-all duration-200 ${
                         settings.totalRounds === num
                           ? 'bg-cyan-500/20 border-cyan-400 text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]'
                           : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-500'
@@ -420,15 +450,15 @@ export default function App() {
                 </div>
               </div>
               
-              <div className="bg-black/30 p-3 rounded border border-gray-700 text-xs text-gray-400 flex items-start gap-2">
+              <div className="bg-black/30 p-3 md:p-4 rounded border border-gray-700 text-xs md:text-sm text-gray-400 flex items-start gap-2">
                  <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
-                 <span>WARNING: 20-second timer active. Brain lag results in immediate termination.</span>
+                 <span>WARNING: 30-second timer active. Brain lag results in immediate termination.</span>
               </div>
 
               <button
                 onClick={startGame}
                 disabled={!settings.playerName}
-                className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black py-4 rounded shadow-lg transform hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed glitch-hover uppercase tracking-widest text-xl mt-4 relative overflow-hidden group"
+                className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black py-4 md:py-5 rounded shadow-lg transform hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed glitch-hover uppercase tracking-widest text-xl md:text-2xl mt-4 relative overflow-hidden group"
               >
                 <span className="relative z-10">INITIATE PROTOCOL</span>
                 <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
@@ -440,36 +470,43 @@ export default function App() {
         {stage === GameStage.PLAYING && (
           <div className="w-full flex flex-col items-center animate-in fade-in slide-in-from-bottom-8 duration-500">
             
-            {/* Timer Display */}
-            <div className={`mb-4 flex items-center gap-2 text-2xl font-black font-mono transition-colors duration-300 ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-cyan-400'}`}>
-                <Timer size={24} className={timeLeft <= 5 ? 'animate-spin' : ''} />
-                <span className="tracking-widest">00:{timeLeft.toString().padStart(2, '0')}</span>
+            {/* Massive Panic Timer */}
+            <div 
+               className="mb-4 md:mb-6 flex items-center gap-3 font-black font-mono transition-all duration-100 ease-linear"
+               style={getTimerStyle()}
+            >
+                <Timer className={`w-8 h-8 md:w-16 md:h-16 ${timeLeft <= 10 ? 'animate-spin' : ''}`} />
+                <span className={`text-4xl md:text-7xl lg:text-8xl tracking-widest ${timeLeft > 10 ? 'text-cyan-400' : ''}`}>
+                   00:{timeLeft.toString().padStart(2, '0')}
+                </span>
             </div>
             
-            {/* Scoreboard */}
-            <div className="flex w-full justify-between gap-2 mb-4">
-              <div className={`flex flex-col items-center w-1/3 p-2 rounded-lg border transition-all duration-300 ${isPlayerTurn ? 'bg-cyan-900/40 border-cyan-500 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'bg-black/40 border-gray-700 opacity-60'}`}>
-                <span className="text-xs text-gray-400 font-mono mb-1">YOU (X)</span>
-                <span className={`text-2xl font-bold ${isPlayerTurn ? 'text-cyan-300 drop-shadow-[0_0_5px_cyan]' : 'text-cyan-700'}`}>{scores.player}</span>
+            {/* Scoreboard - Full width of parent */}
+            <div className="flex w-full justify-between gap-2 md:gap-4 mb-4">
+              <div className={`flex flex-col items-center w-1/3 p-2 md:p-4 rounded-lg border transition-all duration-300 ${isPlayerTurn ? 'bg-cyan-900/40 border-cyan-500 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'bg-black/40 border-gray-700 opacity-60'}`}>
+                <span className="text-xs md:text-sm text-gray-400 font-mono mb-1">YOU (X)</span>
+                <span className={`text-2xl md:text-4xl font-bold ${isPlayerTurn ? 'text-cyan-300 drop-shadow-[0_0_5px_cyan]' : 'text-cyan-700'}`}>{scores.player}</span>
               </div>
               
-              <div className="flex flex-col items-center w-1/3 py-2 bg-black/20 rounded-lg border border-gray-800">
-                <span className="text-xs text-gray-500 font-mono">ROUND</span>
-                <span className="text-xl font-bold text-gray-300">{roundsPlayed} / {settings.totalRounds}</span>
+              <div className="flex flex-col items-center w-1/3 py-2 md:py-4 bg-black/20 rounded-lg border border-gray-800">
+                <span className="text-xs md:text-sm text-gray-500 font-mono">ROUND</span>
+                <span className="text-xl md:text-3xl font-bold text-gray-300">{roundsPlayed} / {settings.totalRounds}</span>
               </div>
               
               <div 
                 onMouseEnter={handleBotHover}
-                className={`flex flex-col items-center w-1/3 p-2 rounded-lg border transition-all duration-300 cursor-help ${isBotTurn ? 'bg-pink-900/40 border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.3)] animate-pulse' : 'bg-black/40 border-gray-700 opacity-60'}`}
+                className={`flex flex-col items-center w-1/3 p-2 md:p-4 rounded-lg border transition-all duration-300 cursor-help ${isBotTurn ? 'bg-pink-900/40 border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.3)] animate-pulse' : 'bg-black/40 border-gray-700 opacity-60'}`}
               >
-                <span className="text-xs text-gray-400 font-mono mb-1">BOT (O)</span>
-                <span className={`text-2xl font-bold ${isBotTurn ? 'text-pink-300 drop-shadow-[0_0_5px_magenta]' : 'text-pink-800'}`}>{scores.bot}</span>
+                <span className="text-xs md:text-sm text-gray-400 font-mono mb-1">BOT (O)</span>
+                <span className={`text-2xl md:text-4xl font-bold ${isBotTurn ? 'text-pink-300 drop-shadow-[0_0_5px_magenta]' : 'text-pink-800'}`}>{scores.bot}</span>
               </div>
             </div>
 
-            <TrashTalk message={botTaunt} />
+            <div className="w-full">
+               <TrashTalk message={botTaunt} />
+            </div>
 
-            <div className={`relative my-4 transition-transform ${isShaking ? 'shake-hard' : ''}`}>
+            <div className={`relative w-full my-4 transition-transform ${isShaking ? 'shake-hard' : ''}`}>
               <Board 
                 squares={squares} 
                 onClick={handleMove} 
@@ -482,11 +519,11 @@ export default function App() {
               {isScanning && (
                 <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/90 rounded-xl backdrop-blur-sm animate-in fade-in duration-200 overflow-hidden border-2 border-red-500">
                   <div className="absolute top-0 left-0 w-full h-1 bg-red-500 shadow-[0_0_15px_#ef4444] scan-line-anim"></div>
-                  <ScanLine size={48} className="text-red-500 animate-pulse mb-4" />
-                  <h3 className="text-2xl font-bold text-red-500 animate-pulse text-center px-4 font-mono">
+                  <ScanLine size={48} className="text-red-500 animate-pulse mb-4 w-12 h-12 md:w-20 md:h-20" />
+                  <h3 className="text-2xl md:text-4xl font-bold text-red-500 animate-pulse text-center px-4 font-mono">
                     CHEATER DETECTED
                   </h3>
-                  <p className="text-red-300 font-mono mt-2 text-sm text-center px-6">
+                  <p className="text-red-300 font-mono mt-2 text-sm md:text-xl text-center px-6">
                     {scanMessage}
                   </p>
                 </div>
@@ -498,20 +535,20 @@ export default function App() {
                    <div className="text-center p-4">
                       {winState.winner === 'X' ? (
                         <>
-                           <h2 className="text-4xl font-black text-cyan-400 mb-2 drop-shadow-lg animate-bounce">
+                           <h2 className="text-4xl md:text-6xl font-black text-cyan-400 mb-2 drop-shadow-lg animate-bounce">
                              NO WAY!
                            </h2>
-                           <p className="text-white font-mono text-sm">Completed in {GAME_DURATION - timeLeft}s</p>
+                           <p className="text-white font-mono text-sm md:text-xl">Completed in {GAME_DURATION - timeLeft}s</p>
                         </>
                       ) : winState.winner === 'O' ? (
                         <>
-                           <h2 className="text-4xl font-black text-pink-500 mb-2 drop-shadow-lg">
+                           <h2 className="text-4xl md:text-6xl font-black text-pink-500 mb-2 drop-shadow-lg">
                              {winState.reason === 'TIMEOUT' ? 'TIME UP!' : 'REKT!'}
                            </h2>
-                           {winState.reason === 'TIMEOUT' && <p className="text-red-500 font-mono text-sm">TOO SLOW MEATBAG</p>}
+                           {winState.reason === 'TIMEOUT' && <p className="text-red-500 font-mono text-sm md:text-xl">TOO SLOW MEATBAG</p>}
                         </>
                       ) : (
-                        <h2 className="text-3xl font-black text-gray-300 mb-2">
+                        <h2 className="text-3xl md:text-5xl font-black text-gray-300 mb-2">
                           DRAW
                         </h2>
                       )}
@@ -519,18 +556,18 @@ export default function App() {
                       {!isSessionOver ? (
                          <button 
                             onClick={nextRound}
-                            className="mt-4 px-6 py-2 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition-colors flex items-center gap-2 mx-auto"
+                            className="mt-4 px-6 py-2 md:px-8 md:py-3 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition-colors flex items-center gap-2 mx-auto md:text-xl"
                          >
-                           NEXT ROUND <Zap size={18} />
+                           NEXT ROUND <Zap className="w-4 h-4 md:w-6 md:h-6" />
                          </button>
                       ) : (
                          <div className="mt-4">
-                            <p className="text-sm text-gray-400 mb-3">SESSION COMPLETE</p>
+                            <p className="text-sm md:text-lg text-gray-400 mb-3">SESSION COMPLETE</p>
                             <button 
                                 onClick={resetGameFull}
-                                className="px-6 py-2 bg-pink-600 text-white font-bold rounded hover:bg-pink-500 transition-colors flex items-center gap-2 mx-auto"
+                                className="px-6 py-2 md:px-8 md:py-3 bg-pink-600 text-white font-bold rounded hover:bg-pink-500 transition-colors flex items-center gap-2 mx-auto md:text-xl"
                             >
-                              NEW GAME <RotateCcw size={18} />
+                              NEW GAME <RotateCcw className="w-4 h-4 md:w-6 md:h-6" />
                             </button>
                          </div>
                       )}
@@ -539,20 +576,20 @@ export default function App() {
               )}
             </div>
             
-            <div className="flex gap-4 mt-8">
+            <div className="flex gap-4 mt-2 md:mt-4 w-full justify-center">
               <button 
                   onClick={handleHint}
                   disabled={winState !== null || isScanning}
-                  className="px-4 py-2 rounded bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 hover:bg-yellow-500/30 transition-colors flex items-center gap-2 text-xs font-bold uppercase disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="px-4 py-2 md:px-6 md:py-3 rounded bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 hover:bg-yellow-500/30 transition-colors flex items-center gap-2 text-xs md:text-sm font-bold uppercase disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                <Lightbulb size={14} /> Need Help?
+                <Lightbulb className="w-4 h-4 md:w-5 md:h-5" /> Need Help?
               </button>
 
               <button 
                   onClick={resetGameFull}
-                  className="px-4 py-2 rounded bg-gray-800 text-gray-400 border border-gray-700 hover:bg-red-900/50 hover:text-red-400 hover:border-red-800 transition-colors flex items-center gap-2 text-xs font-bold uppercase group"
+                  className="px-4 py-2 md:px-6 md:py-3 rounded bg-gray-800 text-gray-400 border border-gray-700 hover:bg-red-900/50 hover:text-red-400 hover:border-red-800 transition-colors flex items-center gap-2 text-xs md:text-sm font-bold uppercase group"
               >
-                <Trash2 size={14} className="group-hover:rotate-12 transition-transform" /> Rage Quit
+                <Trash2 className="w-4 h-4 md:w-5 md:h-5 group-hover:rotate-12 transition-transform" /> Rage Quit
               </button>
             </div>
 
@@ -563,20 +600,20 @@ export default function App() {
       {/* Winners Board Modal */}
       {showLeaderboard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-2xl bg-gray-900 border-2 border-yellow-500/50 rounded-xl p-6 shadow-[0_0_50px_rgba(234,179,8,0.2)] max-h-[80vh] flex flex-col relative">
+          <div className="w-full max-w-2xl bg-gray-900 border-2 border-yellow-500/50 rounded-xl p-6 md:p-8 shadow-[0_0_50px_rgba(234,179,8,0.2)] max-h-[80vh] flex flex-col relative">
             <button 
               onClick={() => setShowLeaderboard(false)} 
               className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
             >
-              <XIcon size={24} />
+              <XIcon className="w-6 h-6 md:w-8 md:h-8" />
             </button>
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-800">
-              <Trophy size={32} className="text-yellow-500 animate-pulse" />
+              <Trophy className="text-yellow-500 animate-pulse w-8 h-8 md:w-10 md:h-10" />
               <div className="flex flex-col">
                  <h2 className="text-2xl md:text-3xl font-black text-yellow-500 font-orbitron tracking-wide">
                    HALL OF MIRACLES
                  </h2>
-                 <p className="text-xs text-gray-400 font-mono">RANKED BY SPEED (LUCK)</p>
+                 <p className="text-xs md:text-sm text-gray-400 font-mono">RANKED BY SPEED (LUCK)</p>
               </div>
             </div>
             
@@ -590,20 +627,20 @@ export default function App() {
                   leaderboard.map((entry, idx) => (
                       <div key={idx} className="bg-black/40 border border-gray-800 p-4 rounded-lg flex flex-col sm:flex-row justify-between sm:items-center gap-3 hover:border-yellow-500/30 transition-colors group">
                           <div className="flex items-center gap-4">
-                              <div className={`flex items-center justify-center w-10 h-10 rounded-full font-bold font-mono text-lg border ${idx === 0 ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'}`}>
+                              <div className={`flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full font-bold font-mono text-lg md:text-xl border ${idx === 0 ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'}`}>
                                 {idx + 1}
                               </div>
                               <div>
-                                  <div className="text-lg font-bold text-white tracking-wide">{entry.name}</div>
-                                  <div className="flex gap-4 text-xs font-mono text-gray-400">
+                                  <div className="text-lg md:text-xl font-bold text-white tracking-wide">{entry.name}</div>
+                                  <div className="flex gap-4 text-xs md:text-sm font-mono text-gray-400">
                                       <span>{entry.date}</span>
                                       <span className="text-cyan-400 font-bold">TIME: {entry.timeTaken}s</span>
                                   </div>
                               </div>
                           </div>
                           <div className="sm:text-right pl-14 sm:pl-0">
-                              <div className="text-[10px] text-pink-500 font-bold uppercase tracking-wider mb-0.5">BOT_COMMENT.LOG</div>
-                              <div className="text-cyan-400 font-mono text-sm italic border-l-2 border-cyan-500/30 pl-2 sm:border-none sm:pl-0">
+                              <div className="text-[10px] md:text-xs text-pink-500 font-bold uppercase tracking-wider mb-0.5">BOT_COMMENT.LOG</div>
+                              <div className="text-cyan-400 font-mono text-sm md:text-base italic border-l-2 border-cyan-500/30 pl-2 sm:border-none sm:pl-0">
                                 "{entry.botComment || 'System glitch.'}"
                               </div>
                           </div>
@@ -611,7 +648,7 @@ export default function App() {
                   ))
               )}
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-800 text-center text-xs text-gray-600 font-mono">
+            <div className="mt-4 pt-4 border-t border-gray-800 text-center text-xs md:text-sm text-gray-600 font-mono">
                FASTEST CLICKERS OR BIGGEST CHEATERS?
             </div>
           </div>
