@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff, Skull } from 'lucide-react';
+import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff, Skull, Crown } from 'lucide-react';
 import { Player, WinState, GameStage, GameSettings, LeaderboardEntry } from './types';
 import { TAUNTS, HINTS, BOT_BLUNDER_CHANCE, LEADERBOARD_COMMENTS, SCANNING_MESSAGES, AWAY_MESSAGES, GAME_DURATION } from './constants';
 import { checkWinner, getBotMove } from './services/ai';
@@ -53,6 +53,10 @@ export default function App() {
   // Derived state for visuals
   const isBotTurn = !isXNext && stage === GameStage.PLAYING && !winState && !isScanning;
   const isPlayerTurn = isXNext && stage === GameStage.PLAYING && !winState && !isScanning;
+  
+  // Get Top Player
+  const topPlayer = leaderboard.length > 0 ? leaderboard[0] : null;
+  const topThree = leaderboard.slice(0, 3);
 
   // --- Network Status ---
   useEffect(() => {
@@ -499,7 +503,7 @@ export default function App() {
               <div>
                 <label className="block text-cyan-400 font-bold mb-2 font-mono md:text-lg">SELECT ROUNDS</label>
                 <div className="flex gap-4">
-                  {[1, 2, 3].map(num => (
+                  {[1, 3, 5].map(num => (
                     <button
                       key={num}
                       onClick={() => setSettings({ ...settings, totalRounds: num })}
@@ -514,10 +518,36 @@ export default function App() {
                   ))}
                 </div>
               </div>
+
+              {/* Top 3 Leaderboard Preview */}
+              <div className="mt-4 p-4 bg-black/40 border border-yellow-500/30 rounded-lg">
+                 <div className="flex items-center gap-2 mb-3">
+                   <Crown className="text-yellow-500 w-5 h-5" />
+                   <h3 className="text-yellow-500 font-bold tracking-wider text-sm">FASTEST SURVIVORS</h3>
+                 </div>
+                 {topThree.length > 0 ? (
+                    <div className="space-y-2">
+                      {topThree.map((entry, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-xs md:text-sm font-mono">
+                           <div className="flex items-center gap-2">
+                             <span className={`w-5 h-5 flex items-center justify-center rounded-full font-bold text-[10px] ${
+                               idx === 0 ? 'bg-yellow-500 text-black' : 
+                               idx === 1 ? 'bg-gray-400 text-black' : 'bg-orange-700 text-white'
+                             }`}>{idx + 1}</span>
+                             <span className="text-gray-300">{entry.name}</span>
+                           </div>
+                           <span className="text-cyan-400 font-bold">{entry.timeTaken}s</span>
+                        </div>
+                      ))}
+                    </div>
+                 ) : (
+                    <div className="text-gray-600 text-xs italic text-center py-2">NO RECORDS FOUND</div>
+                 )}
+              </div>
               
               <div className="bg-black/30 p-3 md:p-4 rounded border border-gray-700 text-xs md:text-sm text-gray-400 flex items-start gap-2">
                  <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
-                 <span>WARNING: 30-second timer active. Brain lag results in immediate termination.</span>
+                 <span>WARNING: {GAME_DURATION}-second timer active. Brain lag results in immediate termination.</span>
               </div>
 
               <button
@@ -537,13 +567,26 @@ export default function App() {
             
             {/* Massive Panic Timer */}
             <div 
-               className="mb-4 md:mb-6 flex items-center gap-3 font-black font-mono transition-all duration-100 ease-linear"
+               className="mb-1 flex items-center gap-3 font-black font-mono transition-all duration-100 ease-linear"
                style={getTimerStyle()}
             >
                 <Timer className={`w-8 h-8 md:w-16 md:h-16 ${timeLeft <= 10 ? 'animate-spin' : ''}`} />
                 <span className={`text-4xl md:text-7xl lg:text-8xl tracking-widest ${timeLeft > 10 ? 'text-cyan-400' : ''}`}>
                    00:{timeLeft.toString().padStart(2, '0')}
                 </span>
+            </div>
+
+            {/* Time To Beat Indicator */}
+            <div className="mb-6 flex items-center gap-2 text-xs md:text-sm bg-gray-900/80 px-4 py-1.5 rounded-full border border-yellow-500/20 shadow-[0_0_10px_rgba(234,179,8,0.1)]">
+               <Trophy className="w-3 h-3 md:w-4 md:h-4 text-yellow-500" />
+               <span className="text-gray-400 tracking-wide">TARGET TO BEAT:</span>
+               {topPlayer ? (
+                 <span className="text-yellow-400 font-mono font-bold animate-pulse">
+                    {topPlayer.timeTaken}s <span className="text-gray-500 text-[10px] ml-1">({topPlayer.name})</span>
+                 </span>
+               ) : (
+                 <span className="text-gray-600 font-mono">--</span>
+               )}
             </div>
             
             {/* Scoreboard - Full width of parent */}

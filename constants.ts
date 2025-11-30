@@ -126,4 +126,4 @@ export const WINNING_COMBINATIONS = [
 ];
 
 export const BOT_BLUNDER_CHANCE = 0.11; // 11% chance to mess up
-export const GAME_DURATION = 30; // Seconds
+export const GAME_DURATION = 25; // Seconds
