@@ -1,0 +1,5 @@
+{
+  "name": "Beat The Bot",
+  "description": "A cyberpunk Tic-Tac-Toe game against a trash-talking AI that is almost unbeatable.",
+  "requestFramePermissions": []
+}
