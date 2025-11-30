@@ -1,3 +1,4 @@
+
 export const TAUNTS = {
   START: [
     "Ready to lose, meatbag?",
@@ -52,6 +53,16 @@ export const TAUNTS = {
     "DID YOU FALL ASLEEP?",
     "TIME'S UP. YOU LOSE.",
     "BUFFERING... FOREVER."
+  ],
+  HOVER: [
+    "Don't touch the glass.",
+    "Personal space, meatbag.",
+    "Admiring my score?",
+    "Stop poking me.",
+    "Focus on losing, not hovering.",
+    "I can see your cursor shaking.",
+    "Do not feed the AI.",
+    "Yes, I am winning. Deal with it."
   ]
 };
 

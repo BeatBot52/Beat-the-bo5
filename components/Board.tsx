@@ -7,11 +7,14 @@ interface BoardProps {
   onClick: (i: number) => void;
   winningLine: number[] | null;
   disabled: boolean;
+  isBotTurn: boolean;
 }
 
-export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, disabled }) => {
+export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, disabled, isBotTurn }) => {
+  const containerClass = isBotTurn ? 'neon-box-pink' : 'neon-box-cyan';
+  
   return (
-    <div className="grid grid-cols-3 gap-3 p-3 bg-gray-800 rounded-xl neon-box relative">
+    <div className={`grid grid-cols-3 gap-3 p-3 bg-gray-800 rounded-xl relative transition-all duration-500 ${containerClass}`}>
       {squares.map((square, i) => {
         const isWinningSquare = winningLine?.includes(i);
         return (
@@ -46,8 +49,8 @@ export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, dis
         );
       })}
       
-      {/* Grid lines decoration effect */}
-      <div className="absolute inset-0 pointer-events-none rounded-xl border-2 border-gray-700/50"></div>
+      {/* Grid lines decoration effect - changes color based on turn */}
+      <div className={`absolute inset-0 pointer-events-none rounded-xl border-2 transition-colors duration-500 ${isBotTurn ? 'border-pink-500/20' : 'border-cyan-400/20'}`}></div>
     </div>
   );
 };

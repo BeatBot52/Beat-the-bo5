@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download } from 'lucide-react';
 import { Player, WinState, GameStage, GameSettings, LeaderboardEntry } from './types';
@@ -37,6 +38,10 @@ export default function App() {
 
   const turnTimeoutRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
+
+  // Derived state for visuals
+  const isBotTurn = !isXNext && stage === GameStage.PLAYING && !winState && !isScanning;
+  const isPlayerTurn = isXNext && stage === GameStage.PLAYING && !winState && !isScanning;
 
   // --- PWA Install Handler ---
   useEffect(() => {
@@ -220,6 +225,12 @@ export default function App() {
   const handleHint = () => {
      const randomHint = HINTS[Math.floor(Math.random() * HINTS.length)];
      setBotTaunt(randomHint);
+  };
+
+  const handleBotHover = () => {
+    if (stage !== GameStage.PLAYING || winState || isScanning) return;
+    const randomTaunt = TAUNTS.HOVER[Math.floor(Math.random() * TAUNTS.HOVER.length)];
+    setBotTaunt(randomTaunt);
   };
 
   const handleGameEnd = (result: WinState) => {
@@ -409,18 +420,23 @@ export default function App() {
             </div>
             
             {/* Scoreboard */}
-            <div className="flex w-full justify-between mb-4 bg-black/40 p-2 rounded-lg border border-gray-700">
-              <div className="flex flex-col items-center w-1/3">
-                <span className="text-xs text-gray-400 font-mono">YOU (X)</span>
-                <span className="text-2xl font-bold text-cyan-400">{scores.player}</span>
+            <div className="flex w-full justify-between gap-2 mb-4">
+              <div className={`flex flex-col items-center w-1/3 p-2 rounded-lg border transition-all duration-300 ${isPlayerTurn ? 'bg-cyan-900/40 border-cyan-500 shadow-[0_0_15px_rgba(34,211,238,0.3)]' : 'bg-black/40 border-gray-700 opacity-60'}`}>
+                <span className="text-xs text-gray-400 font-mono mb-1">YOU (X)</span>
+                <span className={`text-2xl font-bold ${isPlayerTurn ? 'text-cyan-300 drop-shadow-[0_0_5px_cyan]' : 'text-cyan-700'}`}>{scores.player}</span>
               </div>
-              <div className="flex flex-col items-center w-1/3 border-x border-gray-700">
-                <span className="text-xs text-gray-400 font-mono">ROUND</span>
-                <span className="text-xl font-bold text-white">{roundsPlayed} / {settings.totalRounds}</span>
+              
+              <div className="flex flex-col items-center w-1/3 py-2 bg-black/20 rounded-lg border border-gray-800">
+                <span className="text-xs text-gray-500 font-mono">ROUND</span>
+                <span className="text-xl font-bold text-gray-300">{roundsPlayed} / {settings.totalRounds}</span>
               </div>
-              <div className="flex flex-col items-center w-1/3">
-                <span className="text-xs text-gray-400 font-mono">BOT (O)</span>
-                <span className="text-2xl font-bold text-pink-500">{scores.bot}</span>
+              
+              <div 
+                onMouseEnter={handleBotHover}
+                className={`flex flex-col items-center w-1/3 p-2 rounded-lg border transition-all duration-300 cursor-help ${isBotTurn ? 'bg-pink-900/40 border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.3)] animate-pulse' : 'bg-black/40 border-gray-700 opacity-60'}`}
+              >
+                <span className="text-xs text-gray-400 font-mono mb-1">BOT (O)</span>
+                <span className={`text-2xl font-bold ${isBotTurn ? 'text-pink-300 drop-shadow-[0_0_5px_magenta]' : 'text-pink-800'}`}>{scores.bot}</span>
               </div>
             </div>
 
@@ -432,6 +448,7 @@ export default function App() {
                 onClick={handleMove} 
                 winningLine={winState?.line || null}
                 disabled={winState !== null || !isXNext || isScanning}
+                isBotTurn={isBotTurn}
               />
               
               {/* Scanning Overlay (Fake Cheat Detection) */}
