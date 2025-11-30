@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff } from 'lucide-react';
+import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff, Skull } from 'lucide-react';
 import { Player, WinState, GameStage, GameSettings, LeaderboardEntry } from './types';
 import { TAUNTS, HINTS, BOT_BLUNDER_CHANCE, LEADERBOARD_COMMENTS, SCANNING_MESSAGES, AWAY_MESSAGES, GAME_DURATION } from './constants';
 import { checkWinner, getBotMove } from './services/ai';
-import { playPlayerMove, playBotMove, playWin, playLose, playDraw, playTicker } from './services/audio';
+import { playPlayerMove, playBotMove, playWin, playLose, playDraw, playTicker, playPowerDown, playStamp } from './services/audio';
 import { Board } from './components/Board';
 import { TrashTalk } from './components/TrashTalk';
 import { ConfettiEffect } from './components/ConfettiEffect';
@@ -26,6 +26,13 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState(SCANNING_MESSAGES[0]);
   
+  // New visual states
+  const [showResultOverlay, setShowResultOverlay] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [victimCount, setVictimCount] = useState(0);
+  const [showVictimStamp, setShowVictimStamp] = useState(false);
+  const [flashScreen, setFlashScreen] = useState(false);
+
   // Timer State
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -41,6 +48,7 @@ export default function App() {
 
   const turnTimeoutRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
+  const resultTimeoutRef = useRef<number | null>(null);
 
   // Derived state for visuals
   const isBotTurn = !isXNext && stage === GameStage.PLAYING && !winState && !isScanning;
@@ -137,7 +145,7 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [stage, winState]);
 
-  // Load leaderboard on mount
+  // Load leaderboard & victim count on mount
   useEffect(() => {
     const saved = localStorage.getItem('btb_leaderboard');
     if (saved) {
@@ -146,6 +154,10 @@ export default function App() {
       } catch (e) {
         console.error("Failed to parse leaderboard");
       }
+    }
+    const savedVictims = localStorage.getItem('btb_victim_count');
+    if (savedVictims) {
+        setVictimCount(parseInt(savedVictims));
     }
   }, []);
 
@@ -226,6 +238,9 @@ export default function App() {
     const result = checkWinner(nextSquares);
     if (result) {
       setIsTimerRunning(false);
+      setFlashScreen(true);
+      setTimeout(() => setFlashScreen(false), 500); // Reset flash
+
       if (result.winner === 'X') {
         setIsScanning(true);
         setBotTaunt("WAIT. CALCULATING...");
@@ -304,54 +319,91 @@ export default function App() {
       if (result.reason !== 'TIMEOUT') {
         setBotTaunt(TAUNTS.WIN[Math.floor(Math.random() * TAUNTS.WIN.length)]);
       }
+      
+      // Update Victim Count
+      const newVictims = victimCount + 1;
+      setVictimCount(newVictims);
+      localStorage.setItem('btb_victim_count', newVictims.toString());
+      
+      // Trigger Victim Stamp with Delay
+      setTimeout(() => {
+          setShowVictimStamp(true);
+          if (!isMuted) playStamp();
+          setIsShaking(true); // Big shake on stamp
+          setTimeout(() => {
+              setShowVictimStamp(false);
+              setIsShaking(false);
+          }, 2500);
+      }, 600);
     } else {
       setBotTaunt(TAUNTS.DRAW[Math.floor(Math.random() * TAUNTS.DRAW.length)]);
     }
 
     setScores(newScores);
+
+    // Drama Delay - Wait before showing the overlay so player can see the board/line
+    // If bot wins, we wait longer to let the stamp animation finish
+    const delay = result.winner === 'O' ? 3200 : 1500;
+    
+    resultTimeoutRef.current = window.setTimeout(() => {
+        setShowResultOverlay(true);
+    }, delay);
   };
 
   const startGame = () => {
     if (!settings.playerName.trim()) return;
     setStage(GameStage.PLAYING);
-    resetBoard();
+    resetBoardLogic();
     setRoundsPlayed(0);
     setScores({ player: 0, bot: 0 });
     setBotTaunt(TAUNTS.START[Math.floor(Math.random() * TAUNTS.START.length)]);
   };
 
-  const resetBoard = () => {
+  const resetBoardLogic = () => {
     setSquares(Array(9).fill(null));
     setWinState(null);
     setIsXNext(true); 
     setIsScanning(false);
+    setShowResultOverlay(false);
+    setShowVictimStamp(false);
     setTimeLeft(GAME_DURATION);
     setIsTimerRunning(true);
   };
 
-  const resetGameFull = () => {
-    setStage(GameStage.LOGIN);
-    setSettings({ ...settings, playerName: '' });
-    setIsTimerRunning(false);
+  const handleResetWithAnimation = (fullReset: boolean) => {
+    // Trigger CRT Power Off
+    setIsResetting(true);
+    if (!isMuted) playPowerDown();
+    
+    setTimeout(() => {
+        if (fullReset) {
+            setStage(GameStage.LOGIN);
+            setSettings({ ...settings, playerName: '' });
+            setIsTimerRunning(false);
+        } else {
+            resetBoardLogic();
+        }
+        setIsResetting(false);
+    }, 600); // Wait for animation
   };
 
   const nextRound = () => {
-     resetBoard();
+     handleResetWithAnimation(false);
   }
+
+  const resetGameFull = () => {
+     handleResetWithAnimation(true);
+  };
 
   const isSessionOver = roundsPlayed >= settings.totalRounds && winState !== null;
 
   // Calculate Panic Animation
   const getTimerStyle = () => {
     if (timeLeft > 10) return {};
-    
-    // Intensity grows as time gets closer to 0
-    // At 10s: intensity ~1. At 1s: intensity ~10.
     const intensity = (11 - timeLeft) * 1.5;
     const x = (Math.random() - 0.5) * intensity;
     const y = (Math.random() - 0.5) * intensity;
     const rot = (Math.random() - 0.5) * intensity;
-    
     return {
        transform: `translate(${x}px, ${y}px) rotate(${rot}deg)`,
        color: timeLeft <= 5 ? '#ef4444' : '#f59e0b' // Red vs Orange
@@ -359,8 +411,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-[url('https://images.unsplash.com/photo-1535868463750-c78d9543614f?q=80&w=2076&auto=format&fit=crop')] bg-cover bg-center bg-no-repeat bg-blend-multiply bg-gray-900 overflow-hidden select-none">
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-[url('https://images.unsplash.com/photo-1535868463750-c78d9543614f?q=80&w=2076&auto=format&fit=crop')] bg-cover bg-center bg-no-repeat bg-blend-multiply bg-gray-900 overflow-hidden select-none ${isResetting ? 'crt-off-anim' : ''}`}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
+      {/* Screen Flash Overlay */}
+      <div className={`fixed inset-0 bg-white pointer-events-none z-[60] ${flashScreen ? 'flash-active' : 'opacity-0'}`}></div>
       
       {/* Top Controls */}
       <div className="absolute top-4 right-4 z-50 flex gap-2 md:gap-4 md:top-6 md:right-6">
@@ -395,19 +449,30 @@ export default function App() {
 
       <ConfettiEffect active={winState?.winner === 'X' && !isScanning} />
 
-      {/* Main Game Container - Responsive Width for Tablets/Desktops */}
+      {/* Main Game Container */}
       <div className="relative z-10 w-full max-w-md md:max-w-xl lg:max-w-2xl flex flex-col items-center transition-all duration-300">
         
         {/* Header */}
-        <div className="text-center mb-6 md:mb-8">
+        <div className="text-center mb-6 md:mb-8 flex flex-col items-center">
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600 neon-text-pink tracking-tighter italic transform -skew-x-6 drop-shadow-lg glitch-hover cursor-default">
             BEAT THE BOT
           </h1>
           <p className="text-cyan-400 font-mono mt-2 text-lg md:text-2xl tracking-widest uppercase glow-cyan">
             Good luck, meatbag 😈
           </p>
+
+          {/* Arcade Style Victim Counter */}
+          <div className="mt-4 flex flex-col items-center animate-pulse group hover:scale-105 transition-transform">
+              <div className="text-pink-600 font-black tracking-widest text-sm md:text-base mb-1 group-hover:text-pink-400">GLOBAL VICTIMS</div>
+              <div className="bg-black border-4 border-pink-700 px-6 py-2 rounded-lg shadow-[0_0_20px_rgba(236,72,153,0.5)] bg-[linear-gradient(rgba(18,16,16,0)50%,rgba(0,0,0,0.25)50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_4px,6px_100%]">
+                  <div className="font-mono text-4xl md:text-6xl text-pink-500 font-bold tabular-nums drop-shadow-[0_0_15px_rgba(236,72,153,1)] tracking-widest">
+                       {victimCount.toString().padStart(4, '0')}
+                  </div>
+              </div>
+          </div>
+          
           {isOffline && (
-             <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 bg-red-900/50 rounded-full border border-red-500 text-red-300 text-xs md:text-sm font-bold animate-pulse">
+             <div className="inline-flex items-center gap-2 mt-4 px-3 py-1 bg-red-900/50 rounded-full border border-red-500 text-red-300 text-xs md:text-sm font-bold animate-pulse">
                <WifiOff size={12} /> OFFLINE MODE ACTIVE
              </div>
           )}
@@ -514,6 +579,20 @@ export default function App() {
                 disabled={winState !== null || !isXNext || isScanning}
                 isBotTurn={isBotTurn}
               />
+
+              {/* VICTIM STAMP OVERLAY */}
+              {showVictimStamp && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+                     <div className="relative">
+                         <h1 className="text-6xl md:text-9xl font-black text-red-600 tracking-tighter -rotate-12 border-8 border-red-600 p-4 md:p-8 bg-black/80 backdrop-blur transform scale-150 stamp-anim shadow-[0_0_100px_red] mix-blend-hard-light">
+                             VICTIM #{victimCount}
+                         </h1>
+                         <div className="absolute -bottom-10 left-0 right-0 text-center">
+                             <span className="bg-red-600 text-black font-bold px-4 py-1 text-xl animate-bounce">PROCESSED</span>
+                         </div>
+                     </div>
+                  </div>
+              )}
               
               {/* Scanning Overlay (Fake Cheat Detection) */}
               {isScanning && (
@@ -529,10 +608,10 @@ export default function App() {
                 </div>
               )}
 
-              {/* Result Overlay */}
-              {winState && !isScanning && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 rounded-xl backdrop-blur-sm animate-in zoom-in duration-300">
-                   <div className="text-center p-4">
+              {/* Result Overlay with Drama Delay */}
+              {winState && !isScanning && showResultOverlay && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/90 rounded-xl backdrop-blur-md animate-in zoom-in duration-300">
+                   <div className="text-center p-4 w-full">
                       {winState.winner === 'X' ? (
                         <>
                            <h2 className="text-4xl md:text-6xl font-black text-cyan-400 mb-2 drop-shadow-lg animate-bounce">
@@ -556,18 +635,18 @@ export default function App() {
                       {!isSessionOver ? (
                          <button 
                             onClick={nextRound}
-                            className="mt-4 px-6 py-2 md:px-8 md:py-3 bg-white text-black font-bold rounded-full hover:bg-gray-200 transition-colors flex items-center gap-2 mx-auto md:text-xl"
+                            className="mt-6 px-6 py-3 md:px-10 md:py-4 bg-white text-black font-bold rounded-full hover:bg-cyan-400 hover:scale-110 transition-all flex items-center gap-2 mx-auto md:text-2xl shadow-lg"
                          >
-                           NEXT ROUND <Zap className="w-4 h-4 md:w-6 md:h-6" />
+                           NEXT ROUND <Zap className="w-5 h-5 md:w-7 md:h-7" />
                          </button>
                       ) : (
-                         <div className="mt-4">
+                         <div className="mt-6">
                             <p className="text-sm md:text-lg text-gray-400 mb-3">SESSION COMPLETE</p>
                             <button 
                                 onClick={resetGameFull}
-                                className="px-6 py-2 md:px-8 md:py-3 bg-pink-600 text-white font-bold rounded hover:bg-pink-500 transition-colors flex items-center gap-2 mx-auto md:text-xl"
+                                className="px-6 py-3 md:px-10 md:py-4 bg-pink-600 text-white font-bold rounded hover:bg-pink-500 hover:scale-105 transition-all flex items-center gap-2 mx-auto md:text-2xl shadow-lg border border-pink-400"
                             >
-                              NEW GAME <RotateCcw className="w-4 h-4 md:w-6 md:h-6" />
+                              NEW GAME <RotateCcw className="w-5 h-5 md:w-7 md:h-7" />
                             </button>
                          </div>
                       )}

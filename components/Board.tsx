@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Player } from '../types';
 import { X, Circle } from 'lucide-react';
@@ -46,7 +47,7 @@ export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, dis
   const pathD = coords ? `M ${coords.x1} ${coords.y1} L ${coords.x2} ${coords.y2}` : '';
 
   return (
-    <div className={`w-full aspect-square grid grid-cols-3 gap-2 md:gap-4 p-3 md:p-5 bg-gray-800 rounded-xl relative transition-all duration-500 ${containerClass}`}>
+    <div className={`w-full aspect-square grid grid-cols-3 gap-2 md:gap-4 p-3 md:p-5 bg-gray-800 rounded-xl relative transition-all duration-500 ${containerClass} ${isBotTurn ? 'scale-[1.01] shadow-[0_0_30px_rgba(236,72,153,0.5)]' : ''}`}>
       {squares.map((square, i) => {
         const isWinningSquare = winningLine?.includes(i);
         return (
@@ -67,13 +68,13 @@ export const Board: React.FC<BoardProps> = ({ squares, onClick, winningLine, dis
           >
             {square === 'X' && (
               <X 
-                className="w-[60%] h-[60%] text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]" 
+                className="w-[60%] h-[60%] text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)] symbol-appear" 
                 strokeWidth={3}
               />
             )}
             {square === 'O' && (
               <Circle 
-                className="w-[60%] h-[60%] text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.8)]" 
+                className="w-[60%] h-[60%] text-pink-500 drop-shadow-[0_0_5px_rgba(236,72,153,0.8)] symbol-appear" 
                 strokeWidth={3}
               />
             )}

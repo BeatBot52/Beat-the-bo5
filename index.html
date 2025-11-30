@@ -132,25 +132,68 @@
       .scan-line-anim {
         animation: scan-line 2s linear infinite;
       }
+
+      /* Juicy Pop-In for Symbols */
+      @keyframes symbol-appear {
+        0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+        60% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+        100% { transform: scale(1) rotate(0deg); opacity: 1; }
+      }
+      .symbol-appear {
+        animation: symbol-appear 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
+
+      /* CRT Power Off */
+      @keyframes crt-off {
+        0% { transform: scale(1); opacity: 1; filter: brightness(1); }
+        40% { transform: scale(1, 0.002); opacity: 1; filter: brightness(5); }
+        70% { transform: scale(0, 0.002); opacity: 0.5; }
+        100% { transform: scale(0, 0); opacity: 0; }
+      }
+      .crt-off-anim {
+        animation: crt-off 0.6s ease-in-out forwards;
+        pointer-events: none;
+      }
+
+      /* Stamp Animation */
+      @keyframes stamp-in {
+        0% { transform: scale(3) rotate(0deg); opacity: 0; }
+        50% { transform: scale(1) rotate(-12deg); opacity: 1; }
+        60% { transform: scale(1.1) rotate(-12deg); }
+        100% { transform: scale(1) rotate(-12deg); opacity: 1; }
+      }
+      .stamp-anim {
+        animation: stamp-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+      }
+
+      /* Screen Flash */
+      @keyframes screen-flash {
+        0% { opacity: 0; }
+        10% { opacity: 0.3; background-color: white; }
+        100% { opacity: 0; }
+      }
+      .flash-active {
+        animation: screen-flash 0.5s ease-out forwards;
+        pointer-events: none;
+      }
+
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "workbox-precaching": "https://aistudiocdn.com/workbox-precaching@^7.4.0",
+    "workbox-core": "https://aistudiocdn.com/workbox-core@^7.4.0",
+    "workbox-routing": "https://aistudiocdn.com/workbox-routing@^7.4.0",
+    "workbox-strategies": "https://aistudiocdn.com/workbox-strategies@^7.4.0",
+    "workbox-cacheable-response": "https://aistudiocdn.com/workbox-cacheable-response@^7.4.0",
+    "workbox-expiration": "https://aistudiocdn.com/workbox-expiration@^7.4.0",
     "vite": "https://aistudiocdn.com/vite@^7.2.4",
     "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "vite-plugin-pwa": "https://aistudiocdn.com/vite-plugin-pwa@^1.2.0",
-    "workbox-strategies": "https://aistudiocdn.com/workbox-strategies@^7.4.0",
-    "workbox-precaching": "https://aistudiocdn.com/workbox-precaching@^7.4.0",
-    "workbox-routing": "https://aistudiocdn.com/workbox-routing@^7.4.0",
-    "workbox-cacheable-response": "https://aistudiocdn.com/workbox-cacheable-response@^7.4.0",
-    "workbox-core": "https://aistudiocdn.com/workbox-core@^7.4.0",
-    "workbox-expiration": "https://aistudiocdn.com/workbox-expiration@^7.4.0",
-    "path": "https://aistudiocdn.com/path@^0.12.7",
-    "url": "https://aistudiocdn.com/url@^0.11.4"
+    "vite-plugin-pwa": "https://aistudiocdn.com/vite-plugin-pwa@^1.2.0"
   }
 }
 </script>

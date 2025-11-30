@@ -90,3 +90,49 @@ export const playTicker = () => {
   // Sharp, short, high-pitched tick
   createOscillator('square', 1200, 0.05, 0.05);
 };
+
+export const playPowerDown = () => {
+  const ctx = initAudio();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  // Rapid descending sweep
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(800, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(50, ctx.currentTime + 0.4);
+
+  gain.gain.setValueAtTime(0.3, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.4);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start();
+  osc.stop(ctx.currentTime + 0.4);
+};
+
+export const playStamp = () => {
+  const ctx = initAudio();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  // Heavy thud
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(100, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(10, ctx.currentTime + 0.2);
+
+  gain.gain.setValueAtTime(0.8, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+
+  // Add some noise or filter for impact (simulated with low freq square)
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 500;
+  
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start();
+  osc.stop(ctx.currentTime + 0.3);
+};
