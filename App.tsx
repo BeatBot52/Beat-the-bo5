@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download } from 'lucide-react';
+import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff } from 'lucide-react';
 import { Player, WinState, GameStage, GameSettings, LeaderboardEntry } from './types';
 import { TAUNTS, HINTS, BOT_BLUNDER_CHANCE, LEADERBOARD_COMMENTS, SCANNING_MESSAGES, AWAY_MESSAGES, GAME_DURATION } from './constants';
 import { checkWinner, getBotMove } from './services/ai';
@@ -33,8 +32,10 @@ export default function App() {
   const [isMuted, setIsMuted] = useState(true);
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
   
-  // PWA Install Prompt State
+  // PWA Install State
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const turnTimeoutRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
@@ -43,12 +44,27 @@ export default function App() {
   const isBotTurn = !isXNext && stage === GameStage.PLAYING && !winState && !isScanning;
   const isPlayerTurn = isXNext && stage === GameStage.PLAYING && !winState && !isScanning;
 
+  // --- Network Status ---
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // --- PWA Install Handler ---
   useEffect(() => {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsAppInstalled(true);
+    }
+
     const handleInstallPrompt = (e: any) => {
-      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      // Stash the event so it can be triggered later.
       setInstallPrompt(e);
     };
 
@@ -60,14 +76,20 @@ export default function App() {
   }, []);
 
   const handleInstallClick = () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    installPrompt.userChoice.then((choiceResult: any) => {
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted the install prompt');
-        setInstallPrompt(null);
-      }
-    });
+    if (installPrompt) {
+      installPrompt.prompt();
+      installPrompt.userChoice.then((choiceResult: any) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('User accepted the install prompt');
+          setInstallPrompt(null);
+        }
+      });
+    } else {
+      // Manual Instructions via Bot Taunt
+      setBotTaunt("MANUAL OVERRIDE: Tap the 3 dots ↗️ and select 'Install App' or 'Add to Home Screen'.");
+      // Also show a standard alert for clarity
+      alert("To install for Offline Play:\n\n1. Tap the browser menu (⋮ or ↗️)\n2. Select 'Add to Home Screen' or 'Install App'");
+    }
   };
 
   // --- TTS Handling ---
@@ -310,7 +332,17 @@ export default function App() {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"></div>
       
       {/* Top Controls */}
-      <div className="absolute top-4 right-4 z-40 flex gap-2">
+      <div className="absolute top-4 right-4 z-50 flex gap-2">
+         {/* Install Button (Permanent) */}
+         <button 
+           onClick={handleInstallClick}
+           className="flex items-center gap-2 px-3 py-2 bg-gray-900/80 border border-cyan-500 text-cyan-500 rounded-full hover:bg-cyan-500/20 transition-all hover:scale-105 active:scale-95 shadow-lg group"
+           title="Install App for Offline Play"
+         >
+           <Download size={20} className="group-hover:animate-bounce" />
+           <span className="hidden sm:inline font-bold text-xs">INSTALL APP</span>
+         </button>
+
          <button 
            onClick={() => setIsMuted(!isMuted)}
            className={`p-3 bg-gray-900/80 border rounded-full transition-all hover:scale-110 active:scale-95 shadow-lg group ${isMuted ? 'border-gray-600 text-gray-400' : 'border-pink-500 text-pink-500 hover:bg-pink-500/20'}`}
@@ -344,6 +376,11 @@ export default function App() {
           <p className="text-cyan-400 font-mono mt-2 text-lg tracking-widest uppercase glow-cyan">
             Good luck, meatbag 😈
           </p>
+          {isOffline && (
+             <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 bg-red-900/50 rounded-full border border-red-500 text-red-300 text-xs font-bold animate-pulse">
+               <WifiOff size={12} /> OFFLINE MODE ACTIVE
+             </div>
+          )}
         </div>
 
         {stage === GameStage.LOGIN && (
@@ -396,16 +433,6 @@ export default function App() {
                 <span className="relative z-10">INITIATE PROTOCOL</span>
                 <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
               </button>
-
-              {installPrompt && (
-                <button
-                  onClick={handleInstallClick}
-                  className="w-full mt-2 bg-gray-900 border border-cyan-500/50 text-cyan-400 py-3 rounded font-mono font-bold uppercase tracking-widest hover:bg-cyan-900/20 transition-all flex items-center justify-center gap-2 group animate-pulse"
-                >
-                  <Download size={20} className="group-hover:animate-bounce" />
-                  INSTALL NEURAL LINK
-                </button>
-              )}
             </div>
           </div>
         )}
