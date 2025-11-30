@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff, Skull, Crown } from 'lucide-react';
+import { Trash2, RotateCcw, Trophy, User, Zap, Lightbulb, X as XIcon, Volume2, VolumeX, ScanLine, Timer, AlertTriangle, Download, WifiOff, Skull, Crown, Eraser, Edit2, Check } from 'lucide-react';
 import { Player, WinState, GameStage, GameSettings, LeaderboardEntry } from './types';
 import { TAUNTS, HINTS, BOT_BLUNDER_CHANCE, LEADERBOARD_COMMENTS, SCANNING_MESSAGES, AWAY_MESSAGES, GAME_DURATION } from './constants';
 import { checkWinner, getBotMove } from './services/ai';
@@ -32,6 +32,10 @@ export default function App() {
   const [victimCount, setVictimCount] = useState(0);
   const [showVictimStamp, setShowVictimStamp] = useState(false);
   const [flashScreen, setFlashScreen] = useState(false);
+
+  // Editing State
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
 
   // Timer State
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
@@ -399,6 +403,34 @@ export default function App() {
      handleResetWithAnimation(true);
   };
 
+  const handleResetData = () => {
+    if (window.confirm("CONFIRM SYSTEM PURGE: Delete all records and victim counts? This cannot be undone.")) {
+      localStorage.removeItem('btb_leaderboard');
+      localStorage.removeItem('btb_victim_count');
+      setLeaderboard([]);
+      setVictimCount(0);
+      if (!isMuted) playPowerDown();
+    }
+  };
+
+  const startEditing = (entry: LeaderboardEntry) => {
+    setEditingId(entry.id);
+    setEditName(entry.name);
+  };
+
+  const handleSaveName = (id: string) => {
+    if (!editName.trim()) {
+      setEditingId(null);
+      return;
+    }
+    const updated = leaderboard.map(entry => 
+      entry.id === id ? { ...entry, name: editName.trim().toUpperCase() } : entry
+    );
+    setLeaderboard(updated);
+    localStorage.setItem('btb_leaderboard', JSON.stringify(updated));
+    setEditingId(null);
+  };
+
   const isSessionOver = roundsPlayed >= settings.totalRounds && winState !== null;
 
   // Calculate Panic Animation
@@ -483,81 +515,84 @@ export default function App() {
         </div>
 
         {stage === GameStage.LOGIN && (
-          <div className="bg-gray-800/90 p-8 md:p-12 rounded-2xl shadow-2xl border border-pink-500/30 backdrop-blur-md w-full animate-in fade-in zoom-in duration-300">
-            <div className="flex flex-col gap-6 md:gap-8">
-              <div>
-                <label className="block text-pink-500 font-bold mb-2 font-mono md:text-lg">IDENTIFY YOURSELF</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 md:left-4 md:top-4 text-gray-400" size={20} />
-                  <input
-                    type="text"
-                    maxLength={12}
-                    placeholder="ENTER NAME"
-                    className="w-full bg-gray-900 border-2 border-gray-700 text-white pl-10 pr-4 py-2 md:py-3 md:pl-12 md:text-xl rounded focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50 font-mono transition-all uppercase"
-                    value={settings.playerName}
-                    onChange={(e) => setSettings({ ...settings, playerName: e.target.value.toUpperCase() })}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-cyan-400 font-bold mb-2 font-mono md:text-lg">SELECT ROUNDS</label>
-                <div className="flex gap-4">
-                  {[1, 3, 5].map(num => (
-                    <button
-                      key={num}
-                      onClick={() => setSettings({ ...settings, totalRounds: num })}
-                      className={`flex-1 py-3 md:py-4 rounded border-2 font-bold md:text-xl transition-all duration-200 ${
-                        settings.totalRounds === num
-                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]'
-                          : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-500'
-                      }`}
-                    >
-                      {num} {num === 1 ? 'ROUND' : 'ROUNDS'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Top 3 Leaderboard Preview */}
-              <div className="mt-4 p-4 bg-black/40 border border-yellow-500/30 rounded-lg">
-                 <div className="flex items-center gap-2 mb-3">
-                   <Crown className="text-yellow-500 w-5 h-5" />
-                   <h3 className="text-yellow-500 font-bold tracking-wider text-sm">FASTEST SURVIVORS</h3>
-                 </div>
-                 {topThree.length > 0 ? (
-                    <div className="space-y-2">
-                      {topThree.map((entry, idx) => (
-                        <div key={idx} className="flex justify-between items-center text-xs md:text-sm font-mono">
-                           <div className="flex items-center gap-2">
-                             <span className={`w-5 h-5 flex items-center justify-center rounded-full font-bold text-[10px] ${
-                               idx === 0 ? 'bg-yellow-500 text-black' : 
-                               idx === 1 ? 'bg-gray-400 text-black' : 'bg-orange-700 text-white'
-                             }`}>{idx + 1}</span>
-                             <span className="text-gray-300">{entry.name}</span>
-                           </div>
-                           <span className="text-cyan-400 font-bold">{entry.timeTaken}s</span>
-                        </div>
-                      ))}
-                    </div>
-                 ) : (
-                    <div className="text-gray-600 text-xs italic text-center py-2">NO RECORDS FOUND</div>
-                 )}
-              </div>
+          <div className="flex flex-col items-center gap-6 w-full animate-in fade-in zoom-in duration-300">
+            {/* Login Box */}
+            <div className="bg-gray-800/90 p-8 md:p-10 rounded-2xl shadow-2xl border border-pink-500/30 backdrop-blur-md w-full relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-pink-500 to-transparent opacity-50"></div>
               
-              <div className="bg-black/30 p-3 md:p-4 rounded border border-gray-700 text-xs md:text-sm text-gray-400 flex items-start gap-2">
-                 <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
-                 <span>WARNING: {GAME_DURATION}-second timer active. Brain lag results in immediate termination.</span>
-              </div>
+              <div className="flex flex-col gap-6 relative z-10">
+                <div>
+                  <label className="block text-pink-500 font-bold mb-2 font-mono md:text-lg">IDENTIFY YOURSELF</label>
+                  <div className="relative group">
+                    <User className="absolute left-3 top-3 md:left-4 md:top-4 text-gray-500 group-hover:text-pink-400 transition-colors" size={20} />
+                    <input
+                      type="text"
+                      maxLength={12}
+                      placeholder="ENTER NAME"
+                      className="w-full bg-black/50 border-2 border-gray-700 text-white pl-10 pr-4 py-2 md:py-3 md:pl-12 md:text-xl rounded focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/50 font-mono transition-all uppercase placeholder-gray-600"
+                      value={settings.playerName}
+                      onChange={(e) => setSettings({ ...settings, playerName: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                </div>
 
-              <button
-                onClick={startGame}
-                disabled={!settings.playerName}
-                className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black py-4 md:py-5 rounded shadow-lg transform hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed glitch-hover uppercase tracking-widest text-xl md:text-2xl mt-4 relative overflow-hidden group"
-              >
-                <span className="relative z-10">INITIATE PROTOCOL</span>
-                <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-              </button>
+                <div>
+                  <label className="block text-cyan-400 font-bold mb-2 font-mono md:text-lg">SELECT ROUNDS</label>
+                  <div className="flex gap-4">
+                    {[1, 3, 5].map(num => (
+                      <button
+                        key={num}
+                        onClick={() => setSettings({ ...settings, totalRounds: num })}
+                        className={`flex-1 py-3 md:py-4 rounded border-2 font-bold md:text-xl transition-all duration-200 ${
+                          settings.totalRounds === num
+                            ? 'bg-cyan-900/30 border-cyan-400 text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
+                            : 'bg-black/40 border-gray-700 text-gray-500 hover:border-gray-500 hover:bg-gray-800'
+                        }`}
+                      >
+                        {num} {num === 1 ? 'ROUND' : 'ROUNDS'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Top 3 Leaderboard Preview - Inside the box now */}
+                <div className="w-full bg-black/60 border border-yellow-500/30 rounded-xl p-4 backdrop-blur-sm mt-2 shadow-inner relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-2 opacity-10">
+                        <Trophy size={64} className="text-yellow-500" />
+                    </div>
+                    <div className="flex items-center gap-2 mb-3 relative z-10">
+                    <Crown className="text-yellow-500 w-5 h-5 animate-pulse" />
+                    <h3 className="text-yellow-500 font-bold tracking-wider text-sm md:text-base font-orbitron">FASTEST SURVIVORS</h3>
+                    </div>
+                    {topThree.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-2 relative z-10">
+                        {topThree.map((entry, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-sm font-mono bg-white/5 p-2 rounded border-l-2 border-transparent hover:border-yellow-500 transition-colors group">
+                            <div className="flex items-center gap-3">
+                                <span className={`w-6 h-6 flex items-center justify-center rounded font-bold text-xs shadow-md ${
+                                idx === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600 text-black' : 
+                                idx === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500 text-black' : 'bg-gradient-to-br from-orange-600 to-red-700 text-white'
+                                }`}>{idx + 1}</span>
+                                <span className="text-gray-200 group-hover:text-white transition-colors">{entry.name}</span>
+                            </div>
+                            <span className="text-cyan-400 font-bold drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{entry.timeTaken}s</span>
+                            </div>
+                        ))}
+                        </div>
+                    ) : (
+                        <div className="text-gray-600 text-xs italic text-center py-4 border-2 border-dashed border-gray-800 rounded relative z-10">NO RECORDS FOUND</div>
+                    )}
+                </div>
+
+                <button
+                  onClick={startGame}
+                  disabled={!settings.playerName}
+                  className="w-full bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black py-4 md:py-5 rounded shadow-lg transform hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed glitch-hover uppercase tracking-widest text-xl md:text-2xl mt-2 relative overflow-hidden group border border-pink-400/50"
+                >
+                  <span className="relative z-10">START GAME</span>
+                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -722,7 +757,7 @@ export default function App() {
       {/* Winners Board Modal */}
       {showLeaderboard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-2xl bg-gray-900 border-2 border-yellow-500/50 rounded-xl p-6 md:p-8 shadow-[0_0_50px_rgba(234,179,8,0.2)] max-h-[80vh] flex flex-col relative">
+          <div className="w-full max-w-2xl bg-gray-900 border-2 border-yellow-500/50 rounded-xl p-6 md:p-8 shadow-[0_0_50px_rgba(234,179,8,0.2)] max-h-[85vh] flex flex-col relative">
             <button 
               onClick={() => setShowLeaderboard(false)} 
               className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
@@ -748,19 +783,49 @@ export default function App() {
               ) : (
                   leaderboard.map((entry, idx) => (
                       <div key={idx} className="bg-black/40 border border-gray-800 p-4 rounded-lg flex flex-col sm:flex-row justify-between sm:items-center gap-3 hover:border-yellow-500/30 transition-colors group">
-                          <div className="flex items-center gap-4">
-                              <div className={`flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full font-bold font-mono text-lg md:text-xl border ${idx === 0 ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'}`}>
+                          <div className="flex items-center gap-4 w-full">
+                              <div className={`flex shrink-0 items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full font-bold font-mono text-lg md:text-xl border ${idx === 0 ? 'bg-yellow-500 text-black border-yellow-400' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30'}`}>
                                 {idx + 1}
                               </div>
-                              <div>
-                                  <div className="text-lg md:text-xl font-bold text-white tracking-wide">{entry.name}</div>
+                              <div className="w-full">
+                                  <div className="flex items-center gap-2">
+                                      {editingId === entry.id ? (
+                                        <div className="flex items-center gap-2 w-full">
+                                            <input 
+                                                autoFocus
+                                                type="text" 
+                                                value={editName}
+                                                onChange={(e) => setEditName(e.target.value.toUpperCase())}
+                                                maxLength={12}
+                                                className="bg-black border border-cyan-500 text-cyan-400 px-2 py-1 rounded text-lg font-bold font-mono uppercase focus:outline-none w-full max-w-[200px]"
+                                            />
+                                            <button 
+                                                onClick={() => handleSaveName(entry.id)}
+                                                className="p-1 bg-cyan-900/50 text-cyan-400 rounded hover:bg-cyan-500 hover:text-black transition-colors"
+                                            >
+                                                <Check size={18} />
+                                            </button>
+                                        </div>
+                                      ) : (
+                                        <>
+                                            <div className="text-lg md:text-xl font-bold text-white tracking-wide">{entry.name}</div>
+                                            <button 
+                                                onClick={() => startEditing(entry)}
+                                                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-cyan-400 transition-all"
+                                                title="Edit Name"
+                                            >
+                                                <Edit2 size={14} />
+                                            </button>
+                                        </>
+                                      )}
+                                  </div>
                                   <div className="flex gap-4 text-xs md:text-sm font-mono text-gray-400">
                                       <span>{entry.date}</span>
                                       <span className="text-cyan-400 font-bold">TIME: {entry.timeTaken}s</span>
                                   </div>
                               </div>
                           </div>
-                          <div className="sm:text-right pl-14 sm:pl-0">
+                          <div className="sm:text-right pl-14 sm:pl-0 shrink-0">
                               <div className="text-[10px] md:text-xs text-pink-500 font-bold uppercase tracking-wider mb-0.5">BOT_COMMENT.LOG</div>
                               <div className="text-cyan-400 font-mono text-sm md:text-base italic border-l-2 border-cyan-500/30 pl-2 sm:border-none sm:pl-0">
                                 "{entry.botComment || 'System glitch.'}"
@@ -770,8 +835,16 @@ export default function App() {
                   ))
               )}
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-800 text-center text-xs md:text-sm text-gray-600 font-mono">
-               FASTEST CLICKERS OR BIGGEST CHEATERS?
+            
+            {/* Footer with Reset Button */}
+            <div className="mt-4 pt-4 border-t border-gray-800 flex justify-between items-center">
+               <span className="text-xs md:text-sm text-gray-600 font-mono hidden sm:inline">FASTEST CLICKERS OR BIGGEST CHEATERS?</span>
+               <button 
+                  onClick={handleResetData}
+                  className="flex items-center gap-2 px-3 py-2 bg-red-900/30 text-red-500 border border-red-900/50 rounded hover:bg-red-900/50 hover:text-red-400 transition-colors text-xs font-bold uppercase"
+               >
+                 <Eraser size={14} /> PURGE DATABASE
+               </button>
             </div>
           </div>
         </div>
